@@ -8,17 +8,17 @@ Cobweb = "ec354790-cf28-43e8-bb59-b484409b7bad"
 Downloads = "f43a241f-c20a-4ad4-852c-f6b1247861c6"
 EasyConfig = "acab07b0-f158-46d4-8913-50acef6d41fe"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
+REPL = "3fa0cd96-eef1-5676-8a61-b3b8758bbffb"
 Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
 Scratch = "6c6a2e73-6563-6170-7368-637461726353"
 StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
-WebAssets = "5318a24a-cfbb-471b-80de-2ec25d7c2d8b"
 
 [compat]
 julia = "1"
 
 [extras]
-Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 Aqua = "4c88cf16-eb10-579e-8560-4a9242c79595"
+Test = "8dfed614-e22c-5e08-85e1-65c5234f0b40"
 
 [targets]
 test = ["Test", "Aqua"]
