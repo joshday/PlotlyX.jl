@@ -8,7 +8,7 @@ using Scratch, JSON3, EasyConfig, Cobweb, StructTypes
 using Cobweb: h, Node
 
 #-----------------------------------------------------------------------------# exports
-export Plot, Config, Preset
+export Plot, Config
 
 #-----------------------------------------------------------------------------# macros
 macro scratch_path(path...); esc(:(joinpath(Scratch.get_scratch!("assets"), $(path...)))); end
@@ -81,7 +81,7 @@ Plot(; layout=Config(), config=Config(), @nospecialize(kw...)) = Plot(Config(kw)
 (p::Plot)(data::Config) = (push!(p.data, data); return p)
 
 StructTypes.StructType(::Plot) = StructTypes.Struct()
-Base.:(==)(a::Plot, b::Plot) = all(getfield(a,f) == getfield(b,f) for f in fieldnames(Plot))
+Base.:(==)(a::Plot, b::Plot) = all(getfield(a,f) == getfield(b,f) for f in setdiff(fieldnames(Plot), [:id]))
 
 #-----------------------------------------------------------------------------# display/show
 function html_div(o::Plot)

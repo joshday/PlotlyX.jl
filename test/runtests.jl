@@ -31,4 +31,7 @@ html(x) = repr("text/html", x)
 end
 
 #-----------------------------------------------------------------------------# Aqua
-Aqua.test_all(PlotlyLight)
+Aqua.test_all(PlotlyX,
+    deps_compat=(; ignore =[:REPL, :Random], check_extras = (;ignore=[:Test])),
+    persistent_tasks = false
+)
