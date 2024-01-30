@@ -34,11 +34,10 @@ function plotly_latest()
     VersionNumber(JSON3.read(file).name)
 end
 
-_template_url(t) = "https://raw.githubusercontent.com/plotly/plotly.py/master/packages/" *
-                  "python/plotly/plotly/package_data/templates/$t.json"
-
-const TEMPLATE_NAMES = (:ggplot2, :gridon, :plotly, :plotly_dark, :plotly_white, :presentation,
-                        :seaborn, :simple_white, :xgridoff, :ygridoff)
+plotly_template_urls = Dict(
+    t => "https://raw.githubusercontent.com/plotly/plotly.py/master/packages/python/plotly/plotly/package_data/templates/$t.json" for t in
+        (:ggplot2, :gridon, :plotly, :plotly_dark, :plotly_white, :presentation, :seaborn, :simple_white, :xgridoff, :ygridoff)
+)
 
 fix_matrix(x::Config) = Config(k => fix_matrix(v) for (k,v) in pairs(x))
 fix_matrix(x) = x
@@ -57,7 +56,7 @@ function __init__()
         plotly_latest()
     global plotly_url = "https://cdn.plot.ly/plotly-$(plotly_version).min.js"
     global plotly_path = @download(plotly_url, @scratch_path("plotly.min.js"))
-    global plotly_template_paths = Dict(t => @download(_template_url(t)) for t in TEMPLATE_NAMES)
+    global plotly_template_paths = Dict(k => @download(v) for (k,v) in plotly_template_urls)
     global plotly_schema_path = @download("https://api.plot.ly/v2/plot-schema?format=json&sha1=%27%27", @scratch_path("plot-schema.json"))
     global settings = Settings()
     nothing
