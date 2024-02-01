@@ -12,8 +12,11 @@ using Cobweb: h, Node
 export Plot, Config, Preset, preset, Traces
 
 #-----------------------------------------------------------------------------# artifacts
+_version = VersionNumber(read(joinpath(artifact"plotly_artifacts", "version.txt"), String))
+
 const plotly = (;
-    version = VersionNumber(read(joinpath(artifact"plotly_artifacts", "version.txt"), String)),
+    version = _version,
+    url = "https://cdn.plot.ly/plotly-$_version.min.js",
     path = joinpath(artifact"plotly_artifacts", "plotly.min.js"),
     schema_path = joinpath(artifact"plotly_artifacts", "plot-schema.json"),
     templates_path = joinpath(artifact"plotly_artifacts", "templates"),
@@ -95,7 +98,11 @@ Base.display(::REPL.REPLDisplay, o::Plot) = Cobweb.preview(html_page(o), reuse=s
 
 
 #-----------------------------------------------------------------------------# preset
-set_template!(t) = (settings.layout.template = JSON3.read(read(joinpath(plotly.template_paths, t))); nothing)
+function set_template!(t)
+    settings.layout.template =
+        JSON3.read(read(joinpath(plotly.templates_path, string(t) * ".json")))
+    nothing
+end
 
 preset = (
     template = (
@@ -112,10 +119,10 @@ preset = (
         ygridoff!       = () -> set_template!(:ygridoff),
     ),
     source = (
-        none!       = () -> settings.src = h.div("No script due to `src_none!`", style="display:none;"),
-        cdn!        = () -> settings.src = h.script(src=plotly_url, charset="utf-8"),
-        local!      = () -> settings.src = h.script(src=plotly_path, charset="utf-8"),
-        standalone! = () -> settings.src = h.script(read(plotly_path, String), charset="utf-8"),
+        none!       = () -> (settings.src = h.div("No script due to `src_none!`", style="display:none;"); nothing),
+        cdn!        = () -> (settings.src = h.script(src=plotly.url, charset="utf-8"); nothing),
+        local!      = () -> (settings.src = h.script(src=plotly.path, charset="utf-8"); nothing),
+        standalone! = () -> (settings.src = h.script(read(plotly.path, String), charset="utf-8"); nothing),
     )
 )
 
