@@ -1,0 +1,6 @@
+[plotly_artifacts]
+git-tree-sha1 = "e6be267a6b2d71b6e2d1f33a06d506e9bc91105b"
+
+    [[plotly_artifacts.download]]
+    sha256 = "a45044c7dd62ba402c5906c1d2e1c3894b42ee7b51b6b474a4603533ea61c6e6"
+    url = "https://gist.github.com/joshday/f51861c265875ab51c54d77b08080afa/raw/e6be267a6b2d71b6e2d1f33a06d506e9bc91105b.tar.gz"

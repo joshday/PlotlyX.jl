@@ -1,93 +1,53 @@
 module PlotlyX
 
-using Random: randstring
+using Artifacts
 using Downloads: download
+using Random: randstring
 using REPL
 
-using Scratch, JSON3, EasyConfig, Cobweb, StructTypes
+using JSON3, EasyConfig, Cobweb, StructTypes
 using Cobweb: h, Node
 
 #-----------------------------------------------------------------------------# exports
-export Plot, trace, Config
+export Plot, Config, Preset, preset, Traces
 
-#-----------------------------------------------------------------------------# macros
-macro scratch_path(path...); esc(:(joinpath(Scratch.get_scratch!(PlotlyX, "assets"), $(path...)))); end
-
-macro download(url, dest=nothing)
-    esc(quote
-        let
-            dest = $(isnothing(dest)) ? PlotlyX.@scratch_path(basename($url)) : $dest
-            if !isfile(dest)
-                @info string("PlotlyX Downloading: ", $url)
-                PlotlyX.download($url, dest)
-            end
-            dest
-        end
-    end)
-end
-
-#-----------------------------------------------------------------------------# utils
-get_semver(x) = VersionNumber(match(r"(\d+)\.(\d+)\.(\d+)", x).match)
-
-function plotly_latest()
-    file = download("https://api.github.com/repos/plotly/plotly.js/releases/latest")
-    VersionNumber(JSON3.read(file).name)
-end
-
-plotly_template_urls = Dict(
-    t => "https://raw.githubusercontent.com/plotly/plotly.py/master/packages/python/plotly/plotly/package_data/templates/$t.json" for t in
-        (:ggplot2, :gridon, :plotly, :plotly_dark, :plotly_white, :presentation, :seaborn, :simple_white, :xgridoff, :ygridoff)
+#-----------------------------------------------------------------------------# artifacts
+const plotly = (;
+    version = VersionNumber(read(joinpath(artifact"plotly_artifacts", "version.txt"), String)),
+    path = joinpath(artifact"plotly_artifacts", "plotly.min.js"),
+    schema_path = joinpath(artifact"plotly_artifacts", "plot-schema.json"),
+    templates_path = joinpath(artifact"plotly_artifacts", "templates"),
 )
 
-fix_matrix(x::Config) = Config(k => fix_matrix(v) for (k,v) in pairs(x))
-fix_matrix(x) = x
-fix_matrix(x::AbstractMatrix) = eachrow(x)
-
-#-----------------------------------------------------------------------------# __init__
+#-----------------------------------------------------------------------------# Settings
 Base.@kwdef mutable struct Settings
-    src::Cobweb.Node    = h.script(src=plotly_url, charset="utf-8")
+    src::Cobweb.Node    = h.script(src="https://cdn.plot.ly/plotly-$(plotly.version).min.js", charset="utf-8")
     div::Cobweb.Node    = h.div(; style="height:100%;width:100%;")
     layout::Config      = Config()
     config::Config      = Config(responsive=true)
     reuse_preview::Bool = true
 end
 
-global settings::Settings
-global plotly_version::VersionNumber
-global plotly_url::String = ""
-global plotly_path::String
-global plotly_template_paths::Dict{Symbol, String}
-global plotly_schema::JSON3.Object
+settings::Settings = Settings()
 
-function __init__()
-    _plotly_path = @scratch_path("plotly.min.js")
-    global plotly_version = isfile(_plotly_path) ? get_semver(readuntil(_plotly_path, "*/")) : plotly_latest()
-    global plotly_url = "https://cdn.plot.ly/plotly-$(plotly_version).min.js"
-    global plotly_path = @download(plotly_url, _plotly_path)
-    global plotly_template_paths = Dict(k => @download(v) for (k,v) in plotly_template_urls)
-    global plotly_schema = JSON3.read(read(@download("https://api.plot.ly/v2/plot-schema?format=json&sha1=%27%27", @scratch_path("plot-schema.json"))))
-    global settings = Settings()
-    nothing
-end
-
-function update!()
-    Scratch.clear_scratchspaces!(PlotlyX)
-    __init__()
-end
+#-----------------------------------------------------------------------------# utils
+fix_matrix(x::Config) = Config(k => fix_matrix(v) for (k,v) in pairs(x))
+fix_matrix(x) = x
+fix_matrix(x::AbstractMatrix) = eachrow(x)
 
 #-----------------------------------------------------------------------------# Plot
 mutable struct Plot
     data::Vector{Config}
     layout::Config
     config::Config
-    id::String
+    id::String  # for html script: Plotly.newPlot("id", data, layout, config)
     Plot(data::Vector{Config}, layout::Config = Config(), config::Config = Config(), id::String = randstring(10)) =
     new(data, Config(layout), Config(config), id)
 end
 
 Plot(data::Config, layout::Config = Config(), config::Config = Config()) = Plot([data], layout, config)
-Plot(; layout=Config(), config=Config(), @nospecialize(kw...)) = Plot(Config(kw), Config(layout), Config(config))
-(p::Plot)(; @nospecialize(kw...)) = p(Config(kw))
+Plot(; layout=Config(), config=Config(), kw...) = Plot(Config(kw), Config(layout), Config(config))
+(p::Plot)(; kw...) = p(Config(kw))
 (p::Plot)(data::Config) = (push!(p.data, data); return p)
 
 StructTypes.StructType(::Plot) = StructTypes.Struct()
@@ -99,7 +59,7 @@ function html_div(o::Plot)
     data = JSON3.write(fix_matrix.(o.data); allow_inf=true)
     layout = JSON3.write(merge(settings.layout, o.layout); allow_inf=true)
     config = JSON3.write(merge(settings.config, o.config); allow_inf=true)
-    h.div(class="plotlyxjl-parent-div",
+    h.div(class="plotlylight-jl-parent-div",
         settings.src,
         settings.div(; id, class="plotlyxjl-plot-div"),
         h.script("Plotly.newPlot(\"$id\", $data, $layout, $config)")
@@ -122,49 +82,55 @@ html_iframe(o::Plot; kw...) = IFrame(html_page(o); height="450px", width="700px"
 
 Base.show(io::IO, ::MIME"juliavscode/html", o::Plot) = show(io, MIME"text/html"(), o)
 
-# Using an <iframe> to display the plot is easier than figuring out what IJulia/Jupyter is doing
-_use_iframe() = (isdefined(Main, :VSCodeServer) && stdout isa Main.VSCodeServer.IJuliaCore.IJuliaStdio) ||
-                (isdefined(Main, :IJulia) && stdout isa Main.IJulia.IJuliaStdio)
-
-Base.show(io::IO, M::MIME"text/html", o::Plot) = show(io, M, _use_iframe() ? html_iframe(o) : html_div(o))
+function Base.show(io::IO, M::MIME"text/html", o::Plot; kw...)
+    !isempty(kw) && Base.depwarn("Keyword arguments for `show`-ing `Plot` are deprecated and will be ignored.", :show; force=true)
+    # Jupyter does weird stuff.  We'll use an iframe to sandbox our html.
+    use_iframe = (isdefined(Main, :VSCodeServer) && stdout isa Main.VSCodeServer.IJuliaCore.IJuliaStdio) ||
+        (isdefined(Main, :IJulia) && stdout isa Main.IJulia.IJuliaStdio)
+    out = use_iframe ? html_iframe(o) : html_div(o)
+    show(io, M, out)
+end
 
 Base.display(::REPL.REPLDisplay, o::Plot) = Cobweb.preview(html_page(o), reuse=settings.reuse_preview)
 
 
-#-----------------------------------------------------------------------------# Presets
-_template!(t) = (settings.layout.template = JSON3.read(read(plotly_template_paths[t])); nothing)
+#-----------------------------------------------------------------------------# preset
+set_template!(t) = (settings.layout.template = JSON3.read(read(joinpath(plotly.template_paths, t))); nothing)
 
-set_template_none!()         = haskey(settings.layout, :template) && delete!(settings.layout, :template)
-set_template_ggplot2!()      = _template!(:ggplot2)
-set_template_gridon!()       = _template!(:gridon)
-set_template_plotly!()       = _template!(:plotly)
-set_template_plotly_dark!()  = _template!(:plotly_dark)
-set_template_plotly_white!() = _template!(:plotly_white)
-set_template_presentation!() = _template!(:presentation)
-set_template_seaborn!()      = _template!(:seaborn)
-set_template_simple_white!() = _template!(:simple_white)
-set_template_xgridoff!()     = _template!(:xgridoff)
-set_template_ygridoff!()     = _template!(:ygridoff)
+preset = (
+    template = (
+        none!           = () -> haskey(settings.layout, :template) && delete!(settings.layout, :template),
+        ggplot2!        = () -> set_template!(:ggplot2),
+        gridon!         = () -> set_template!(:gridon),
+        plotly!         = () -> set_template!(:plotly),
+        plotly_dark!    = () -> set_template!(:plotly_dark),
+        plotly_white!   = () -> set_template!(:plotly_white),
+        presentation!   = () -> set_template!(:presentation),
+        seaborn!        = () -> set_template!(:seaborn),
+        simple_white!   = () -> set_template!(:simple_white),
+        xgridoff!       = () -> set_template!(:xgridoff),
+        ygridoff!       = () -> set_template!(:ygridoff),
+    ),
+    source = (
+        none!       = () -> settings.src = h.div("No script due to `src_none!`", style="display:none;"),
+        cdn!        = () -> settings.src = h.script(src=plotly_url, charset="utf-8"),
+        local!      = () -> settings.src = h.script(src=plotly_path, charset="utf-8"),
+        standalone! = () -> settings.src = h.script(read(plotly_path, String), charset="utf-8"),
+    )
+)
 
-set_src_none!() = settings.src = h.div("src_none!", style="display:none;")
-set_src_cdn!()  = settings.src = h.script(src=plotly_url, charset="utf-8")
-set_src_local!() = settings.src = h.script(src=plotly_path, charset="utf-8")
-set_src_standalone!() = settings.src = h.script(read(plotly_path, String), charset="utf-8")
-
-#-----------------------------------------------------------------------------# Trace
-struct Trace
-    attributes::Config
+# deprecated stuff
+struct PresetDeprecated end
+Base.propertynames(::PresetDeprecated) = (:Template, :Source, :PlotContainer)
+function Base.getproperty(::PresetDeprecated, x::Symbol)
+    Base.depwarn("Preset has been deprecated.  Use the const NamedTuple `PlotlyX.preset` instead.", :Preset; force=true)
+    x == :PlotContainer && error("PlotlyX has changed its display mechanism.  `PlotContainer` is no longer used.")
+    x == :Template && return preset.template
+    x == :Source && return preset.source
 end
-(t::Trace)(; kw...) = Trace(merge(getfield(t, :attributes), Config(kw)))
-Plot(traces::Trace...; kw...) = Plot([t.attributes for t in traces]; kw...)
+const Preset = PresetDeprecated()
 
-trace(; kw...) = Trace(Config(kw))
+#-----------------------------------------------------------------------------# Traces
+include("Traces.jl")
 
-Base.getproperty(::typeof(trace), type::Symbol) = trace(; type)
-Base.propertynames(::typeof(trace)) = collect(keys(plotly_schema.schema.traces))
-
-#-----------------------------------------------------------------------------# help
-help(trace::Union{Symbol, AbstractString}) = plotly_schema.schema.traces[trace].attributes
-help(trace::Union{Symbol, AbstractString}, attr::Union{Symbol, AbstractString}) = help(trace)[attr]
-
-end # module
+end  # PlotlyX module
