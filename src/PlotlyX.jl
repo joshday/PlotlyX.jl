@@ -96,7 +96,7 @@ Object(ref=Symbol[]; kw...) = Object(OrderedDict{Symbol,Any}(kw...), ref)
 Base.iterate(o::Object, state...) = iterate(Fields(o).dict, state...)
 Base.length(o::Object) = length(Fields(o).dict)
 
-help(o::Object) = schema_ref(Fields(o).ref)
+help(o::Object) = Help(schema_ref(Fields(o).ref))
 
 function set_kw!(o::Object, kw)
     for (k, v) in kw
@@ -110,15 +110,16 @@ function set_kw!(o::Object, kw)
     return o
 end
 
-struct NotSet <: AbstractDict{Symbol, Any}
-    help::JSON3.Object
+struct Help <: AbstractDict{Symbol, Any}
+    obj::JSON3.Object
 end
-Base.length(o::NotSet) = length(getfield(o, :help))
-Base.iterate(o::NotSet, state...) = iterate(getfield(o, :help), state...)
-Base.propertynames(o::NotSet) = keys(getfield(o, :help))
-Base.getproperty(o::NotSet, x::Symbol) = NotSet(getfield(o, :help)[x])
+Base.length(o::Help) = length(getfield(o, :obj))
+Base.iterate(o::Help, state...) = iterate(getfield(o, :obj), state...)
+Base.propertynames(o::Help) = keys(getfield(o, :obj))
+Base.getproperty(o::Help, x::Symbol) = Help(getfield(o, :obj)[x])
 
-Base.keys(o::Object) = keys(help(o))
+
+Base.keys(o::Object) = keys(getfield(help(o), :obj))
 function Base.getindex(o::Object, x::Symbol)
     f = Fields(o)
     haskey(f.dict, x) && return f.dict[x]
@@ -237,6 +238,7 @@ struct NewPlotScript
     id::String
 end
 function Base.show(io::IO, ::MIME"text/html", o::NewPlotScript)
+    prune!(o.plot)
     layout = merge(o.settings.layout, o.plot.layout)
     config = merge(o.settings.config, o.plot.config)
     print(io, "<script>Plotly.newPlot(\"", o.id, "\",")
