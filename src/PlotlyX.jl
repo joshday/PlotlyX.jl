@@ -4,7 +4,6 @@ using Artifacts, JSON3
 using OrderedCollections: OrderedCollections, OrderedDict
 using DefaultApplication
 using Cobweb
-using Random: randstring
 
 export trace, layout, config, plot, help, prune!
 
@@ -22,6 +21,7 @@ Base.show(io::IO, p::PlotlyArtifacts) = print(io, "PlotlyArtifacts: v$(p.version
 
 function __init__()
     global plotly = PlotlyArtifacts()
+    global settings = Settings()
 end
 
 function schema_ref(ref::Vector{Symbol})
@@ -129,32 +129,20 @@ Base.merge(a::Object, b::Object) = merge!(copy(a), b)
     config::Object = config()
 end
 Base.getindex(o::Plot, i::Integer) = o.data[i]
-
-#-----------------------------------------------------------------------------# Script Loaders
-abstract type PlotlyScriptLoader end
-
-struct CDNScript <: PlotlyScriptLoader end
-Base.show(io::IO, ::MIME"text/html", o::CDNScript) = show(io, MIME("text/html"), h.script(src=plotly.url, charset="utf-8"))
-
-struct LocalScript <: PlotlyScriptLoader end
-Base.show(io::IO, ::MIME"text/html", o::LocalScript) = show(io, MIME("text/html"), h.script(src=plotly.path, charset="utf-8"))
-
-struct StandaloneScript <: PlotlyScriptLoader end
-Base.show(io::IO, ::MIME"text/html", o::StandaloneScript) = print(io, MIME("text/html"), h.script(read(plotly.path), String), charset="utf-8")
-
-struct NoScript <: PlotlyScriptLoader end
-Base.show(io::IO, ::MIME"text/html", o::NoScript) = nothing
+Base.lastindex(o::Plot) = lastindex(o.data)
 
 #-----------------------------------------------------------------------------# Settings
 @kwdef mutable struct Settings
-    parent_div::Cobweb.Node = h.div(class="plotlyx-parent-div")
-    div::Cobweb.Node        = h.div(class="plotlyx-plot-div")
-    script_loader           = CDNScript()
+    div::Cobweb.Node        = h.div(class="plotlyx-plot")
+    src::Cobweb.Node        = h.script(src=plotly.url, charset="utf-8")
     layout::Object          = layout()
-    config::Object          = config(responsive=true)
-    page_css                = h.style("html, body { padding: 0px; margin: 0px; }")
+    config::Object          = config(responsive=true, displaylogo=false)
+    page_css::Cobweb.Node   = h.style("html, body { padding: 0px; margin: 0px; }")
+    src_inject              = ""
     iframe_style            = "display:block; border:none; min-height:350px; min-width:350px; width:100%; height:100%"
 end
+Base.copy(s::Settings) = Settings(s.div(), s.src(), copy(s.layout), copy(s.config), s.page_css, s.src_inject, s.iframe_style)
+
 function Settings(s::Settings; kw...)
     s2 = Settings((getfield(s, f) for f in fieldnames(Settings))...)
     for (k, v) in kw
@@ -163,11 +151,19 @@ function Settings(s::Settings; kw...)
     return s2
 end
 
-global settings = Settings()
+function with_settings(f; kw...)
+    old = settings
+    try
+        global settings = Settings(settings; kw...)
+        f(settings)
+    finally
+        global settings = old
+    end
+end
 
 #-----------------------------------------------------------------------------# presets
-
 template!(t) = (settings.layout.template = JSON3.read(read(plotly.templates["$t.json"])); nothing)
+
 
 presets = (;
     template = (
@@ -184,10 +180,14 @@ presets = (;
         ygridoff!       = () -> template!(:ygridoff)
     ),
     source = (
-        none!           = () -> (settings.script_loader = NoScript()),
-        cdn!            = () -> (settings.script_loader = CDNScript()),
-        local!          = () -> (settings.script_loader = LocalScript()),
-        standalone!     = () -> (settings.script_loader = StandaloneScript())
+        none!           = () -> (settings.src = h.div("No PlotlyJS Script", style="display:none")),
+        cdn!            = () -> (settings.src = h.script(src=plotly.url, charset="utf-8")),
+        local!          = () -> (settings.src = h.script(src=plotly.path, charset="utf-8")),
+        standalone!     = () -> (settings.src = h.script(read(plotly.path, String), charset="utf-8"))
+    ),
+    display = (
+        fullscreen!     = () -> (settings.div.style = "height:100vh; width:100vw"),
+        mathjax!        = () -> (settings.src_inject = h.script(src="https://cdn.jsdelivr.net/npm/mathjax@3.2.2/es5/tex-svg.js")),
     )
 )
 
@@ -209,44 +209,60 @@ function Base.show(io::IO, ::MIME"text/html", o::NewPlotScript)
 end
 
 #-----------------------------------------------------------------------------# display
-function html_div(o::Plot, s=settings; id=randstring(10))
-    s.parent_div(s.script_loader, s.div(; id), NewPlotScript(o, s, id))
+rand_id() = "plotlyx-" * join(rand('a':'z', 10))
+
+function html_div(o::Plot, id=rand_id())
+    h.div(class="plotlyx-parent", settings.src, settings.div(; id), NewPlotScript(o, settings, id))
 end
 
-function html_page(o::Plot, s=settings; id=randstring(10))
-    s = Settings(s, div=h.div()(style="height:100vh; width:100vw;"))
+function html_page(o::Plot, id=rand_id())
     h.html(
         h.head(
             h.meta(charset="utf-8"),
             h.meta(name="viewport", content="width=device-width, initial-scale=1"),
             h.meta(name="description", content="PlotlyX Plot"),
             h.title("PlotlyX"),
-            s.page_css,
-            s.script_loader
+            settings.page_css,
+            settings.src_inject,
+            settings.src
         ),
-        h.body(html_div(o, Settings(s; script_loader=NoScript())))
+        h.body(html_div(o, id))
     )
 end
 
-function html_iframe(o::Plot, s=settings; id=randstring(10), kw...)
-    Cobweb.IFrame(html_page(o, s; id); style=s.iframe_style, kw...)
+function html_iframe(o::Plot, id=rand_id(), kw...)
+    with_settings() do s
+        s.div.style = "height:100vh; width:100vw"
+        Cobweb.IFrame(html_page(o, id); style=s.iframe_style, kw...)
+    end
 end
+
+function Base.show(io::IO, ::MIME"text/html", o::Plot)
+    get(io, :jupyter, false) && return show(io, MIME("text/html"), html_iframe(o))
+    show(io, MIME("text/html"), html_div(o))
+end
+Base.show(io::IO, ::MIME"juliavscode/html", o) = show(io, MIME("text/html"), o)
 
 Base.show(io::IO, o::Plot) = Cobweb.preview(html_page(o))
 
 #-----------------------------------------------------------------------------# plot
 function plot(; layout=layout(), config=config(), kw...)
-    t = trace(; kw...)
-    Plot([t], layout, config)
+    layout_kw = filter(x -> startswith(string(x.first), "layout_"), kw)
+    config_kw = filter(x -> startswith(string(x.first), "config_"), kw)
+    trace_kw = setdiff(kw, layout_kw, config_kw)
+    layout_kw2 = ((Symbol(string(x.first)[8:end]), x.second) for x in layout_kw)
+    config_kw2 = ((Symbol(string(x.first)[8:end]), x.second) for x in config_kw)
+    t = trace(; trace_kw...)
+    Plot([t], layout(; layout_kw2...), config(; config_kw2...))
 end
+
+plot(args...; kw...) = plot(; plot_args(args...)..., kw...)
 
 const RealVec = AbstractVector{<:Real}
 
-plot(args...; kw...) = plot(; plot_args(args)..., kw...)
-
-plot_args(args::Tuple{RealVec}) = (; y=args[1], type=:scatter)
-plot_args(args::Tuple{RealVec, RealVec}) = (; x=args[1], y=args[2], type=:scatter)
-plot_args(args::Tuple{RealVec, RealVec, RealVec}) = (; x=args[1], y=args[2], z=args[3], type=:scatter3d)
+plot_args(y::RealVec) = (; y, type=:scatter)
+plot_args(x::RealVec, y::RealVec) = (; x, y, type=:scatter)
+plot_args(x::RealVec, y::RealVec, z::RealVec) = (; x, y, z, type=:scatter3d)
 
 Base.propertynames(::typeof(plot)) = keys(plotly.schema.traces)
 Base.getproperty(::typeof(plot), x::Symbol) = (args...; kw...) -> plot(args...; type=x, kw...)
