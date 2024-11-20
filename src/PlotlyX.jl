@@ -38,7 +38,41 @@ function schema_ref(ref::Vector{Symbol})
 end
 
 #-----------------------------------------------------------------------------# json
-include("json.jl")
+function json_join(io::IO, itr, sep, left, right)
+    print(io, left)
+    for (i, item) in enumerate(itr)
+        i == 1 || print(io, sep)
+        json(io, item)
+    end
+    print(io, right)
+end
+
+json(x...) = sprint(json, x...)
+json(io::IO, args...) = foreach(x -> json(io, x), args)
+
+# Strings
+json(io::IO, x::AbstractChar) = print(io, x)
+json(io::IO, x::Union{AbstractString, Symbol}) = print(io, '"', x, '"')
+
+# Numbers
+json(io::IO, x::Real) = print(io, x)
+json(io::IO, x::Rational) = json(io, float(x))
+
+# Null
+json(io::IO, ::Union{Missing, Nothing}) = print(io, "null")
+
+# Bool
+json(io::IO, x::Bool) = print(io, x ? "true" : "false")
+
+# Arrays
+json(io::IO, x::AbstractVector) = json_join(io, x, ',', '[', ']')
+json(io::IO, x::AbstractArray) = json(io, eachslice(x; dims=1))
+json(io::IO, x) = json_join(io, x, ',', '[', ']')  # ← FALLBACK METHOD
+
+# Objects
+json(io::IO, x::Pair) = json(io, x.first, ':', x.second)
+json(io::IO, x::Union{NamedTuple, AbstractDict}) = json_join(io, pairs(x), ',', '{', '}')
+
 
 #-----------------------------------------------------------------------------# Fields & Keys
 struct Fields{T}; x::T; end
@@ -169,7 +203,6 @@ end
 #-----------------------------------------------------------------------------# presets
 template!(t) = (settings.layout.template = JSON3.read(read(plotly.templates["$t.json"])); nothing)
 
-
 presets = (;
     template = (
         none!           = () -> (haskey(settings.layout, :template) && delete!(settings.layout, :template); nothing),
@@ -243,8 +276,9 @@ function html_iframe(o::Plot, id=rand_id(), kw...)
 end
 
 function Base.show(io::IO, ::MIME"text/html", o::Plot)
-    get(io, :jupyter, false) && return show(io, MIME("text/html"), html_iframe(o))
-    show(io, MIME("text/html"), html_div(o))
+    get(io, :jupyter, false) ?
+        show(io, MIME("text/html"), html_iframe(o)) :
+        show(io, MIME("text/html"), html_div(o))
 end
 Base.show(io::IO, ::MIME"juliavscode/html", o) = show(io, MIME("text/html"), o)
 
