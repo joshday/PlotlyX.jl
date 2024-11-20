@@ -1,3 +1,4 @@
 *Manifest.toml
 *.ipynb
 *build/
+*.ipynb_checkpoints/

@@ -22,6 +22,11 @@ Base.show(io::IO, p::PlotlyArtifacts) = print(io, "PlotlyArtifacts: v$(p.version
 function __init__()
     global plotly = PlotlyArtifacts()
     global settings = Settings()
+
+    # Hack since extensions with REPL are wonky
+    for M in Base.loaded_modules_order
+        Symbol(M) == :REPL && @eval Base.display(::$M.REPLDisplay, o::Plot) = Cobweb.preview(html_page(o))
+    end
 end
 
 function schema_ref(ref::Vector{Symbol})
@@ -243,7 +248,6 @@ function Base.show(io::IO, ::MIME"text/html", o::Plot)
 end
 Base.show(io::IO, ::MIME"juliavscode/html", o) = show(io, MIME("text/html"), o)
 
-Base.show(io::IO, o::Plot) = Cobweb.preview(html_page(o))
 
 #-----------------------------------------------------------------------------# plot
 function plot(; layout=layout(), config=config(), kw...)
