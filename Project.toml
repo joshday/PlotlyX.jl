@@ -5,15 +5,24 @@ version = "1.0.0-DEV"
 
 [deps]
 Artifacts = "56f22d72-fd6d-98f1-02f0-08ddc0907c33"
+Cobweb = "ec354790-cf28-43e8-bb59-b484409b7bad"
 DefaultApplication = "3f0dd361-4fe0-5fc6-8523-80b14ec94d85"
 JSON3 = "0f8b85d8-7281-11e9-16c2-39a750bddbf1"
 OrderedCollections = "bac558e1-5e72-5ebc-8fee-abe8a469f55d"
+Random = "9a3f8284-a2c9-5f02-9a11-845980a1fd5c"
+StringTemplates = "59c22e0c-4e04-425f-9782-11a552c58a8d"
+StructTypes = "856f2bd8-1eba-4b0a-8007-ebc267875bd4"
+
 
 [compat]
 Artifacts = "1.11.0"
+Cobweb = "0.7.2"
 DefaultApplication = "1.1.0"
 JSON3 = "1.14.1"
 OrderedCollections = "1.6.3"
+Random = "1.11.0"
+StringTemplates = "0.1.0"
+StructTypes = "1.11.0"
 julia = "1"
 
 [extras]

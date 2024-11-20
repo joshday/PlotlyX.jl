@@ -1,38 +1,28 @@
+function json_join(io::IO, itr, x)
+    first = true
+    for item in itr
+        first ? (first = false) : print(io, x)
+        json(io, item)
+    end
+end
+
 json(x) = sprint(json, x)
 
-json(io::IO, x) = foreach(x -> print(io, x), json_itr(x))
+json(io::IO, args...) = foreach(x -> json(io, x), args)
 
+json(io::IO, x::Union{AbstractString, Symbol, AbstractChar}) = print(io, '"', x, '"')
+json(io::IO, x::Real) = print(io, x)
+json(io::IO, x::Rational) = json(io, float(x))
+json(io::IO, ::Union{Missing, Nothing}) = print(io, "null")
+json(io::IO, x::Pair) = (json(io, string(x.first)); print(io, ':'); json(io, x.second))
+json(io::IO, x::AbstractVector) = (print(io, '['); json_join(io, x, ','); print(io, ']'))
+json(io::IO, x::AbstractArray) = json(io, eachslice(x; dims=1))
+json(io::IO, x) = (print(io, '['); join(io, x, ','); print(io, ']'))
+json(io::IO, x::Union{NamedTuple, AbstractDict}) = (print(io, '{'); json_join(io, pairs(x), ','); print(io, '}'))
 
-json_itr(x::Union{AbstractString, Symbol, AbstractChar}) = ('"', x, '"')
-json_itr(x::Real) = x
-json_itr(x::Rational) = float(x)
-json_itr(::Union{Missing, Nothing}) = "null"
-json_itr(::AbstractVector) = ('['])
+struct JSON{T}
+    content::T
+end
+json(io::IO, x::JSON) = print(io, x.content)
 
-
-# json(io::IO, x::Union{AbstractString, Symbol, AbstractChar}) = print(io, '"', x, '"')
-# json(io::IO, x::Real) = print(io, x)
-# json(io::IO, x::Rational) = json(io, float(x))
-# json(io::IO, ::Union{Missing, Nothing}) = print(io, "null")
-
-# function json(io::IO, x::AbstractVector)
-#   print(io, '[')
-#   for (i, xi) in enumerate(x)
-#     json(io, xi)
-#     i < length(x) && print(io, ',')
-#   end
-#   print(io, ']')
-# end
-
-# json(io::IO, x::AbstractArray) = json(io, eachslice(x; dims=1))
-
-# function json(io::IO, x::AbstractDict)
-#     print(io, '{')
-#     for (i, (k, v)) in enumerate(pairs(x))
-#         json(io, k)
-#         print(io, ':')
-#         json(io, v)
-#         i < length(x) && print(io, ',')
-#     end
-#     print(io, '}')
-# end
+macro json_str(x); :(JSON($x)) end
